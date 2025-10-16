@@ -1,0 +1,67 @@
+name: Trivy Image Scan
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'applications/**'
+  push:
+    branches:
+      - main
+    paths:
+      - 'applications/**'
+
+jobs:
+  trivy-scan:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Trivy
+        uses: aquasecurity/trivy-action@master
+        with:
+          # This configures Trivy for optimal performance within the GitHub Actions environment.
+          # The trivy-action handles installation, caching, and running the scan with minimal configuration.
+          exit-code: '1' # Fail if any issues are found
+          ignore-unfixed: true
+          severity: 'HIGH,CRITICAL'
+          format: 'sarif'
+
+      - name: Install yq for YAML parsing
+        run: |
+          sudo snap install yq
+
+      - name: Extract container images from manifests
+        id: extract-images
+        run: |
+          # Use yq to safely extract all image values, handle array syntax, and filter out non-string values.
+          yq '.spec.template.spec.containers[].image' applications/**/*.yaml > images.txt
+          echo "Images to scan:"
+          cat images.txt
+
+      - name: Run Trivy scan on each referenced image and generate SARIF
+        run: |
+          set -e
+          while read image; do
+            # Skip empty or invalid lines that yq might produce
+            if [[ -z "$image" || "$image" == "null" ]]; then
+              continue
+            fi
+            echo "Scanning image $image"
+            # The trivy-action already handled the trivy command, so we just iterate and scan.
+            trivy image --severity HIGH,CRITICAL --ignore-unfixed --format sarif --output "trivy-report-$(echo $image | sed 's/[^a-zA-Z0-9._-]/-/g').sarif" "$image"
+          done < images.txt
+
+      - name: Upload Trivy SARIF reports to Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-report-*.sarif
+
+      - name: Upload Trivy scan reports as artifacts (optional)
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-reports
+          path: trivy-report-*.sarif
