@@ -34,6 +34,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          touch images.txt
           # Find images in containers + initContainers (Deployments, DaemonSets, etc.)
           # -r: raw strings, '...' recursive descent to catch different kinds
           # Filter out null/empty, then uniq
