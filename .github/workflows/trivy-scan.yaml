@@ -80,11 +80,22 @@ jobs:
               --output "trivy-sarif/trivy-${safe_name}.sarif" \
               "$image"
           done < images.txt
-        # Upload all SARIF files in a directory (supported by GitHub)
-      - name: Upload Trivy SARIF reports to Security tab
+      - name: Merge all SARIF files
+        if: steps.extract-images.outputs.found != '0'
+        run: |
+          echo "Merging all SARIF files into one..."
+          jq -s 'reduce .[] as $item ({}; .runs += $item.runs)' trivy-sarif/*.sarif > trivy-merged.sarif
+
+      - name: Upload merged SARIF report
         uses: github/codeql-action/upload-sarif@v3
         with:
-          sarif_file: trivy-sarif
+          sarif_file: trivy-merged.sarif
+
+        # Upload all SARIF files in a directory (supported by GitHub)
+      # - name: Upload Trivy SARIF reports to Security tab
+      #   uses: github/codeql-action/upload-sarif@v3
+      #   with:
+      #     sarif_file: trivy-sarif
       - name: Upload SARIF artifacts
         uses: actions/upload-artifact@v4
         with:
