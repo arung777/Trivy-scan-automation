@@ -50,7 +50,8 @@ jobs:
           echo "🔍 Extracting container images from manifests..."
           : > images.txt
       
-          yq -r '.. | .image? // ""' applications/**/*.yaml | sed '/^$/d' | sort -u > images.txt
+          yq -r '.. | .image? // ""' applications/**/*.yaml \
+          | sed '/^$/d; /^---$/d' | sort -u > images.txt
       
           echo "✅ Images found:"
           cat images.txt || echo "No images found."
