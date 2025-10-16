@@ -46,19 +46,16 @@ jobs:
         run: |
           set -euo pipefail
           shopt -s globstar nullglob
-          # Collect YAML files
-          files=(applications/**/*.yml applications/**/*.yaml)
-          # If you have Helm templates, you can exclude them, e.g.:
-          # files=(applications/**/!(charts)/**/*.yml applications/**/!(charts)/**/*.yaml)
+      
+          echo "🔍 Extracting container images from manifests..."
           : > images.txt
-          if [ ${#files[@]} -gt 0 ]; then
-            # containers + initContainers (recursively)
-            yq -r '.. | .containers? // empty | .[]?.image? // empty' "${files[@]}" 2>/dev/null || true
-            yq -r '.. | .initContainers? // empty | .[]?.image? // empty' "${files[@]}" 2>/dev/null || true
-          fi | sed '/^$/d' | sort -u > images.txt
-          echo "Images to scan:"
-          cat images.txt || true
+      
+          yq -r '.. | .image? // empty' applications/**/*.yaml | sed '/^$/d' | sort -u > images.txt
+      
+          echo "✅ Images found:"
+          cat images.txt || echo "No images found."
           echo "found=$(wc -l < images.txt | tr -d ' ')" >> "$GITHUB_OUTPUT"
+
       # Skip scan if none found (do NOT fail)
       - name: Skip when no images
         if: steps.extract-images.outputs.found == '0'
