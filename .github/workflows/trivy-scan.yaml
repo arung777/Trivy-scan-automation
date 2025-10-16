@@ -67,37 +67,39 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p trivy-sarif
+          mkdir -p trivy-txt
           while IFS= read -r image; do
             [ -z "$image" ] && continue
             echo "Scanning image: $image"
             safe_name="$(echo "$image" | sed 's/[^a-zA-Z0-9._-]/-/g')"
             trivy image \
-              --format sarif \
-              --severity HIGH,CRITICAL \
-              --ignore-unfixed \
-              --no-progress \
-              --output "trivy-sarif/trivy-${safe_name}.sarif" \
-              "$image"
+            --format table \
+            --severity HIGH,CRITICAL \
+            --ignore-unfixed \
+            --no-progress \
+            "$image" | tee "trivy-txt/trivy-${safe_name}.txt"
+          
+          echo "✅ Scan complete for: $image"
+          echo "---------------------------------------------"
           done < images.txt
-      - name: Merge all SARIF files
-        if: steps.extract-images.outputs.found != '0'
-        run: |
-          echo "Merging all SARIF files into one..."
-          jq -s 'reduce .[] as $item ({}; .runs += $item.runs)' trivy-sarif/*.sarif > trivy-merged.sarif
+      # - name: Merge all SARIF files
+      #   if: steps.extract-images.outputs.found != '0'
+      #   run: |
+      #     echo "Merging all SARIF files into one..."
+      #     jq -s 'reduce .[] as $item ({}; .runs += $item.runs)' trivy-sarif/*.sarif > trivy-merged.sarif
 
-      - name: Upload merged SARIF report
-        uses: github/codeql-action/upload-sarif@v3
-        with:
-          sarif_file: trivy-merged.sarif
+      # - name: Upload merged SARIF report
+      #   uses: github/codeql-action/upload-sarif@v3
+      #   with:
+      #     sarif_file: trivy-merged.sarif
 
         # Upload all SARIF files in a directory (supported by GitHub)
       # - name: Upload Trivy SARIF reports to Security tab
       #   uses: github/codeql-action/upload-sarif@v3
       #   with:
       #     sarif_file: trivy-sarif
-      - name: Upload SARIF artifacts
+      - name: Upload TXT artifacts
         uses: actions/upload-artifact@v4
         with:
           name: trivy-reports
-          path: trivy-sarif/
+          path: trivy-txt/
