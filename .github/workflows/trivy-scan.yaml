@@ -29,27 +29,43 @@ jobs:
           chmod +x /usr/local/bin/yq
           yq --version
       # Extract images from common Kubernetes fields; de-dup and ignore nulls
+      # List manifests (debug)
+      - name: List manifests under applications/**
+        run: |
+          shopt -s globstar nullglob
+          files=(applications/**/*.yml applications/**/*.yaml)
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "No YAML files under applications/**"
+          else
+            printf '%s\n' "${files[@]}"
+          fi
+      # Extract images (robust)
       - name: Extract container images from manifests
         id: extract-images
         shell: bash
         run: |
           set -euo pipefail
-          touch images.txt
-          # Find images in containers + initContainers (Deployments, DaemonSets, etc.)
-          # -r: raw strings, '...' recursive descent to catch different kinds
-          # Filter out null/empty, then uniq
-          yq -r '.. | .containers? // empty | .[]?.image? // empty' applications/**/*.yaml \
-          && yq -r '.. | .initContainers? // empty | .[]?.image? // empty' applications/**/*.yaml \
-          | sed '/^$/d' | sort -u > images.txt || true
+          shopt -s globstar nullglob
+          # Collect YAML files
+          files=(applications/**/*.yml applications/**/*.yaml)
+          # If you have Helm templates, you can exclude them, e.g.:
+          # files=(applications/**/!(charts)/**/*.yml applications/**/!(charts)/**/*.yaml)
+          : > images.txt
+          if [ ${#files[@]} -gt 0 ]; then
+            # containers + initContainers (recursively)
+            yq -r '.. | .containers? // empty | .[]?.image? // empty' "${files[@]}" 2>/dev/null || true
+            yq -r '.. | .initContainers? // empty | .[]?.image? // empty' "${files[@]}" 2>/dev/null || true
+          fi | sed '/^$/d' | sort -u > images.txt
           echo "Images to scan:"
           cat images.txt || true
           echo "found=$(wc -l < images.txt | tr -d ' ')" >> "$GITHUB_OUTPUT"
-      - name: Fail if no images found
+      # Skip scan if none found (do NOT fail)
+      - name: Skip when no images
         if: steps.extract-images.outputs.found == '0'
-        run: |
-          echo "No container images found under applications/**. Nothing to scan."
-          exit 1
+        run: echo "No container images found under applications/**. Skipping scan."
+      # Run Trivy on each image (only if we found any)
       - name: Run Trivy scan on each image and generate SARIF
+        if: steps.extract-images.outputs.found != '0'
         shell: bash
         run: |
           set -euo pipefail
@@ -66,13 +82,13 @@ jobs:
               --output "trivy-sarif/trivy-${safe_name}.sarif" \
               "$image"
           done < images.txt
-      # Upload all SARIF files in a directory (supported by GitHub)
-      - name: Upload Trivy SARIF reports to Security tab
-        uses: github/codeql-action/upload-sarif@v3
-        with:
-          sarif_file: trivy-sarif
-      - name: Upload SARIF artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: trivy-reports
-          path: trivy-sarif/
+            # Upload all SARIF files in a directory (supported by GitHub)
+            - name: Upload Trivy SARIF reports to Security tab
+              uses: github/codeql-action/upload-sarif@v3
+              with:
+                sarif_file: trivy-sarif
+          - name: Upload SARIF artifacts
+          uses: actions/upload-artifact@v4
+          with:
+            name: trivy-reports
+            path: trivy-sarif/
