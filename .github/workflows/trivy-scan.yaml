@@ -80,11 +80,11 @@ jobs:
               --output "trivy-sarif/trivy-${safe_name}.sarif" \
               "$image"
           done < images.txt
-            # Upload all SARIF files in a directory (supported by GitHub)
-            - name: Upload Trivy SARIF reports to Security tab
-              uses: github/codeql-action/upload-sarif@v3
-              with:
-                sarif_file: trivy-sarif
+        # Upload all SARIF files in a directory (supported by GitHub)
+      - name: Upload Trivy SARIF reports to Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-sarif
       - name: Upload SARIF artifacts
         uses: actions/upload-artifact@v4
         with:
